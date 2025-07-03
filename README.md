@@ -16,7 +16,7 @@ To learn more about Real-time Chat Messenger WebApp App and see a walkthrough of
 ## Features
 
 ### Authentication
-- Email/password authentication using Supabase Auth
+- Supabase Auth
 - User profile management with avatars and status
 - Protected routes with authentication guards
 
