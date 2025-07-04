@@ -208,6 +208,21 @@ export interface Database {
           unread_count: number
         }[]
       }
+      get_chats_details_for_user: {
+        Args: {
+          user_id_param: string
+        }
+        Returns: {
+          id: string
+          name: string
+          is_group: boolean
+          other_member_id: string | null
+          created_at: string
+          updated_at: string
+          last_message: Json
+          unread_count: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

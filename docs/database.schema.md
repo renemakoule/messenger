@@ -217,3 +217,124 @@ with check ( auth.uid() = owner );
 create policy "Allow user to delete their own files"
 on storage.objects for delete
 using ( bucket_id = 'chat_attachments' and auth.uid() = owner );
+
+
+
+
+
+
+
+-- =================================================================
+-- SCRIPT COMPLET ET CORRIGÉ POUR LA RÉCUPÉRATION OPTIMISÉE DES CHATS
+-- Exécutez ce bloc en une seule fois dans l'éditeur SQL de Supabase.
+-- =================================================================
+
+-- ÉTAPE 1: NETTOYAGE ET CRÉATION DU TYPE DE RETOUR
+-- On supprime l'ancien type s'il existe pour permettre les modifications.
+DROP TYPE IF EXISTS public.chat_details_type CASCADE;
+
+-- On crée le type qui définit la structure de chaque ligne retournée.
+-- Assurez-vous que cela correspond à ce que votre application attend.
+CREATE TYPE public.chat_details_type AS (
+    id uuid,
+    name text,
+    is_group boolean,
+    created_at timestamptz,
+    updated_at timestamptz,
+    last_message json,
+    unread_count bigint
+);
+
+
+-- ÉTAPE 2: CRÉATION OU REMPLACEMENT DE LA FONCTION RPC
+CREATE OR REPLACE FUNCTION public.get_chats_details_for_user(
+    user_id_param uuid
+)
+RETURNS SETOF public.chat_details_type -- Retourne un ensemble de lignes du type défini ci-dessus
+LANGUAGE plpgsql
+SECURITY DEFINER -- Exécute la fonction avec les droits du créateur (admin), contournant les RLS si nécessaire.
+AS $$
+DECLARE
+    chat_ids_list uuid[];
+BEGIN
+    -- Récupère tous les chat_id auxquels l'utilisateur appartient.
+    SELECT ARRAY_AGG(cm.chat_id)
+    INTO chat_ids_list
+    FROM public.chat_members cm
+    WHERE cm.profile_id = user_id_param;
+
+    -- Si l'utilisateur n'est dans aucun chat, on arrête l'exécution.
+    IF chat_ids_list IS NULL OR array_length(chat_ids_list, 1) = 0 THEN
+        RETURN;
+    END IF;
+
+    -- Retourne les détails pour chaque chat trouvé.
+    RETURN QUERY
+    WITH last_messages AS (
+        SELECT
+            c.id AS chat_id,
+            (
+                SELECT
+                    json_build_object(
+                        'id', m.id,
+                        'content', m.content,
+                        'sender_id', m.sender_id,
+                        'sender_name', p.display_name,
+                        'created_at', m.created_at,
+                        'has_attachment', m.attachment_url IS NOT NULL
+                    )
+                FROM public.messages m
+                LEFT JOIN public.profiles p ON m.sender_id = p.id
+                WHERE m.chat_id = c.id
+                ORDER BY m.created_at DESC
+                LIMIT 1
+            ) AS message_data
+        FROM public.chats c
+        WHERE c.id = ANY(chat_ids_list)
+    ),
+    unread_counts AS (
+        SELECT
+            m.chat_id,
+            count(*) FILTER (WHERE NOT mr.is_read) AS count
+        FROM public.messages m
+        LEFT JOIN (
+            SELECT message_id, true as is_read
+            FROM public.message_reads
+            WHERE profile_id = user_id_param
+        ) mr ON m.id = mr.message_id
+        WHERE m.chat_id = ANY(chat_ids_list)
+        AND m.sender_id <> user_id_param
+        GROUP BY m.chat_id
+    )
+    SELECT
+        c.id,
+        CASE
+            WHEN c.is_group THEN c.name
+            ELSE (
+                SELECT p.display_name
+                FROM public.chat_members cm
+                JOIN public.profiles p ON cm.profile_id = p.id
+                WHERE cm.chat_id = c.id AND cm.profile_id <> user_id_param
+                LIMIT 1
+            )
+        END AS name,
+        c.is_group,
+        c.created_at,
+        c.updated_at,
+        lm.message_data AS last_message,
+        COALESCE(uc.count, 0) AS unread_count
+    FROM public.chats c
+    LEFT JOIN last_messages lm ON c.id = lm.chat_id
+    LEFT JOIN unread_counts uc ON c.id = uc.chat_id -- CORRECTION APPLIQUÉE ICI
+    WHERE c.id = ANY(chat_ids_list);
+
+END;
+$$;
+
+
+-- ÉTAPE 3: ACCORDER LES PERMISSIONS D'EXÉCUTION
+-- Accorde au rôle `authenticated` (tous les utilisateurs connectés) le droit d'exécuter cette fonction.
+GRANT EXECUTE ON FUNCTION public.get_chats_details_for_user(user_id_param uuid) TO authenticated;
+
+-- (Optionnel mais recommandé) Assurez-vous que l'owner de la fonction est bien le super-utilisateur `postgres`
+ALTER FUNCTION public.get_chats_details_for_user(uuid) OWNER TO postgres;
