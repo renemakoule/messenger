@@ -193,20 +193,21 @@ export interface Database {
       [_ in never]: never
     }
     Functions: {
-      get_chat_details: {
+      get_chat_details: { // Assurez-vous que cette fonction est bien définie
         Args: {
           chat_id_param: string
           user_id_param: string
         }
-        Returns: {
+        Returns: { // Et que son type de retour est à jour
           id: string
           name: string
           is_group: boolean
+          other_member_id: string | null // Assurez-vous que ce champ existe
           created_at: string
           updated_at: string
           last_message: Json
           unread_count: number
-        }[]
+        }[] // Elle retourne un tableau même pour un seul résultat
       }
       get_chats_details_for_user: {
         Args: {

@@ -25,98 +25,114 @@ export function useChatList() {
   const { user } = useAuth();
   const supabase = createClient();
 
-  const fetchAllChatDetails = useCallback(async () => {
+  const fetchInitialChatList = useCallback(async () => {
     if (!user) {
       setLoading(false);
       return;
     }
-
-    // On ne remet le loading à true que si on n'a pas encore de chats
-    if (chats.length === 0) {
-      setLoading(true);
-    }
-
+    setLoading(true);
     try {
-      const { data: chatDetailsResults, error } = await supabase.rpc("get_chats_details_for_user", {
+      const { data, error } = await supabase.rpc("get_chats_details_for_user", {
         user_id_param: user.id
       });
-
-      if (error) {
-        console.error("Error fetching chats with RPC:", error);
-        setChats([]);
-        return;
-      }
-
+      if (error) throw error;
+      
       const { data: labels } = await supabase.from("chat_labels").select("*").eq("profile_id", user.id);
-      const chatIds = chatDetailsResults.map(c => c.id);
+      const chatIds = data.map(c => c.id);
       const { data: labelAssignments } = await supabase.from("chat_label_assignments").select("*").eq("profile_id", user.id).in("chat_id", chatIds);
-
-      const validChatsWithLabels = chatDetailsResults.map(chat => {
+      
+      const validChatsWithLabels = data.map(chat => {
         const chatLabels = labelAssignments?.filter(la => la.chat_id === chat.id).map(la => labels?.find(l => l.id === la.label_id)).filter((l): l is Label => l !== undefined) || [];
         return { ...chat, labels: chatLabels };
       });
-
-      validChatsWithLabels.sort((a, b) =>
-        new Date(b.last_message?.created_at || b.updated_at).getTime() -
-        new Date(a.last_message?.created_at || a.updated_at).getTime()
-      );
-
+      validChatsWithLabels.sort((a, b) => new Date(b.last_message?.created_at || b.updated_at).getTime() - new Date(a.last_message?.created_at || a.updated_at).getTime());
       setChats(validChatsWithLabels);
     } catch (error) {
-      console.error("Error in fetchAllChatDetails:", error);
+      console.error("Error fetching initial chat list:", error);
     } finally {
       setLoading(false);
     }
-  }, [user, supabase, chats.length]);
+  }, [user, supabase]);
 
   useEffect(() => {
-    if (user) {
-      fetchAllChatDetails();
-    } else {
-      setLoading(false);
-      setChats([]);
+    fetchInitialChatList();
+  }, [fetchInitialChatList]);
+
+  const updateOrAddChat = useCallback(async (chatId: string) => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase.rpc('get_chat_details', {
+        chat_id_param: chatId,
+        user_id_param: user.id
+      });
+
+      if (error || !data || data.length === 0) {
+        console.error(`Could not fetch details for chat ${chatId}`, error);
+        return;
+      }
+      
+      const updatedChatDetails = data[0] as ChatWithDetails;
+      
+      // Récupérer les labels pour ce chat spécifique
+      const { data: labels } = await supabase.from("chat_labels").select("*, chat_label_assignments!inner(*)").eq('chat_label_assignments.chat_id', chatId).eq('profile_id', user.id);
+      updatedChatDetails.labels = labels || [];
+
+      setChats(prevChats => {
+        // Enlever l'ancienne version du chat s'il existe
+        const otherChats = prevChats.filter(c => c.id !== chatId);
+        // Ajouter la nouvelle version et retrier la liste
+        const newChats = [updatedChatDetails, ...otherChats];
+        newChats.sort((a, b) => new Date(b.last_message?.created_at || b.updated_at).getTime() - new Date(a.last_message?.created_at || a.updated_at).getTime());
+        return newChats;
+      });
+
+    } catch (e) {
+      console.error("Failed to update chat details surgically", e);
     }
-  }, [user, fetchAllChatDetails]);
-  
+  }, [user, supabase]);
+
   useEffect(() => {
     if (!user) return;
 
-    const handleUpdate = () => {
-      // Un léger délai pour éviter les re-fetchs multiples en cas d'événements groupés
-      const timer = setTimeout(() => {
-        fetchAllChatDetails();
-      }, 500);
-      return () => clearTimeout(timer);
-    };
-
-    const messageListener = supabase.channel('public:messages')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, handleUpdate)
+    const messageListener = supabase.channel('realtime-sidebar-messages')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, 
+      (payload) => {
+        const newMsg = payload.new as { chat_id: string };
+        updateOrAddChat(newMsg.chat_id);
+      })
       .subscribe();
         
-    const membersListener = supabase.channel('public:chat_members')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_members', filter: `profile_id=eq.${user.id}`}, handleUpdate)
+    const membersListener = supabase.channel('realtime-sidebar-members')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_members', filter: `profile_id=eq.${user.id}`}, 
+      (payload) => {
+        const eventType = payload.eventType;
+        if (eventType === 'INSERT') {
+          const newMembership = payload.new as { chat_id: string };
+          updateOrAddChat(newMembership.chat_id);
+        } else if (eventType === 'DELETE') {
+          const oldMembership = payload.old as { chat_id?: string };
+          if (oldMembership.chat_id) {
+            setChats(prev => prev.filter(c => c.id !== oldMembership.chat_id));
+          }
+        }
+      })
       .subscribe();
+
+    const readListener = supabase.channel(`read-status-listener-${user.id}`)
+      .on('broadcast', { event: 'chat_read' }, (payload) => {
+          const { chatId } = payload.payload;
+          setChats(prevChats => prevChats.map(chat => 
+            chat.id === chatId ? { ...chat, unread_count: 0 } : chat
+          ));
+      }).subscribe();
 
     return () => {
       supabase.removeChannel(messageListener);
       supabase.removeChannel(membersListener);
-    };
-  }, [user, supabase, fetchAllChatDetails]);
-
-  // Cet effet gère spécifiquement la mise à jour des "unread_count" sans tout recharger
-  useEffect(() => {
-    if (!user) return;
-    const readListener = supabase.channel(`read-status-listener-${user.id}`)
-      .on('broadcast', { event: 'chat_read' }, (payload) => {
-          const { chatId } = payload.payload;
-          setChats(prevChats => prevChats.map(chat => chat.id === chatId ? { ...chat, unread_count: 0 } : chat));
-      }).subscribe();
-
-    return () => {
       supabase.removeChannel(readListener);
-    }
-  }, [user, supabase]);
+    };
+  }, [user, supabase, updateOrAddChat]);
 
-
-  return { chats, loading, refetch: fetchAllChatDetails };
+  return { chats, loading, refetch: fetchInitialChatList };
 }
