@@ -1,4 +1,5 @@
-import { query } from "./_generated/server";
+import { query, mutation } from "./_generated/server";
+import { v } from "convex/values";
 
 // Fonction "type guard" pour aider TypeScript à filtrer les valeurs nulles.
 function isNotNull<T>(value: T | null): value is T {
@@ -67,5 +68,88 @@ export const getChatsForUser = query({
     return validChats.sort((a, b) =>
       (b.lastMessage?._creationTime || b._creationTime) - (a.lastMessage?._creationTime || a._creationTime)
     );
+  },
+});
+
+export const pinChat = mutation({
+  args: { profileId: v.id("profiles"), chatId: v.id("chats") },
+  handler: async (ctx, args) => {
+    // Vérifie si déjà épinglé
+    const existing = await ctx.db
+      .query("pinnedChats")
+      .withIndex("by_profileId_and_chatId", (q) => q.eq("profileId", args.profileId).eq("chatId", args.chatId))
+      .first();
+    if (!existing) {
+      await ctx.db.insert("pinnedChats", {
+        profileId: args.profileId,
+        chatId: args.chatId,
+        createdAt: Date.now(),
+      });
+    }
+  },
+});
+
+export const unpinChat = mutation({
+  args: { profileId: v.id("profiles"), chatId: v.id("chats") },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("pinnedChats")
+      .withIndex("by_profileId_and_chatId", (q) => q.eq("profileId", args.profileId).eq("chatId", args.chatId))
+      .first();
+    if (existing) {
+      await ctx.db.delete(existing._id);
+    }
+  },
+});
+
+export const isChatPinned = query({
+  args: { profileId: v.id("profiles"), chatId: v.id("chats") },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("pinnedChats")
+      .withIndex("by_profileId_and_chatId", (q) => q.eq("profileId", args.profileId).eq("chatId", args.chatId))
+      .first();
+    return !!existing;
+  },
+});
+
+export const archiveChat = mutation({
+  args: { profileId: v.id("profiles"), chatId: v.id("chats") },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("archivedChats")
+      .withIndex("by_profileId_and_chatId", (q) => q.eq("profileId", args.profileId).eq("chatId", args.chatId))
+      .first();
+    if (!existing) {
+      await ctx.db.insert("archivedChats", {
+        profileId: args.profileId,
+        chatId: args.chatId,
+        createdAt: Date.now(),
+      });
+    }
+  },
+});
+
+export const unarchiveChat = mutation({
+  args: { profileId: v.id("profiles"), chatId: v.id("chats") },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("archivedChats")
+      .withIndex("by_profileId_and_chatId", (q) => q.eq("profileId", args.profileId).eq("chatId", args.chatId))
+      .first();
+    if (existing) {
+      await ctx.db.delete(existing._id);
+    }
+  },
+});
+
+export const isChatArchived = query({
+  args: { profileId: v.id("profiles"), chatId: v.id("chats") },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("archivedChats")
+      .withIndex("by_profileId_and_chatId", (q) => q.eq("profileId", args.profileId).eq("chatId", args.chatId))
+      .first();
+    return !!existing;
   },
 });

@@ -19,12 +19,15 @@ import { v4 as uuidv4 } from "uuid";
 import { ClientChatFilter, FilterCriteria } from "../../types/filter";
 import { Database } from "../../types/supabase";
 import FilterModal from "./chat-filter-modal";
+import ProfilePage from "@/app/profile/page";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { useModal } from "@/context/modal-context";
 
 type Label = Database["public"]["Tables"]["chat_labels"]["Row"];
 type ChatWithDetails = { id: string; name: string | null; is_group: boolean; created_at: string; updated_at: string; last_message: { id: string; content: string | null; sender_id: string; sender_name: string; created_at: string; has_attachment: boolean; } | null; unread_count: number; labels: Label[]; };
 const LOCAL_STORAGE_FILTERS_KEY = "chatAppClientFilters";
 
-export default function ChatSidebar() {
+export default function ChatSidebar({ onChatClick }: { onChatClick?: (chatId: string) => void } = {}) {
   const [chats, setChats] = useState<ChatWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -178,7 +181,7 @@ export default function ChatSidebar() {
               const avatarFallback = chatName.substring(0, 2).toUpperCase();
               return (
                 <li key={chat.id} className={`${isActive ? "bg-primary/5" : "hover:bg-muted/50"}`}>
-                  <Link href={`/chat/${chat.id}`} className={`block px-4 py-3`}>
+                  <Link href={`/chat/${chat.id}`} className={`block px-4 py-3`} onClick={() => onChatClick?.(chat.id)}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
                         <Avatar className="h-10 w-10 flex-shrink-0 border"><AvatarFallback className={chat.is_group ? "bg-green-200" : "bg-slate-100"}>{chat.is_group ? <Users className="h-5 w-5" /> : avatarFallback}</AvatarFallback></Avatar>
@@ -202,6 +205,24 @@ export default function ChatSidebar() {
         )}
       </ScrollArea>
       {showFilterModal && <FilterModal isOpen={showFilterModal} onClose={() => setShowFilterModal(false)} onSave={handleSaveFilter} existingFilter={editingFilter} userLabels={userLabels} />}
+      {/* Bouton Mon Profil en bas de la sidebar qui ouvre un modal */}
+      <ProfileModalButton user={user} />
+    </div>
+  );
+}
+
+// Composant bouton + modal profil
+function ProfileModalButton({ user }: { user: any }) {
+  const { openModal } = useModal();
+  return (
+    <div className="border-t bg-background p-4 flex items-center gap-3 cursor-pointer hover:bg-muted transition" onClick={() => user?.id && openModal({ type: "profile", userId: user.id })}>
+      <Avatar className="h-10 w-10">
+        <AvatarFallback>{user?.email?.charAt(0).toUpperCase() || "U"}</AvatarFallback>
+      </Avatar>
+      <div className="flex flex-col">
+        <span className="font-medium text-sm">Mon Profil</span>
+        <span className="text-xs text-muted-foreground">Voir & Modifier</span>
+      </div>
     </div>
   );
 }

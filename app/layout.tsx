@@ -3,6 +3,8 @@
 import { AuthProvider } from "@/context/auth-context";
 import "./globals.css";
 import { FilterProvider } from "@/context/filter";
+import { ModalProvider } from "@/context/modal-context";
+import { NotificationProvider } from "@/components/ui/notification-provider";
 // import AuthGuard from "@/components/auth/auth-guard"; // CETTE LIGNE EST SUPPRIMÉE
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -24,8 +26,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen bg-[#f0f2f5] hide-scrollbar ">
         <AuthProvider>
           <FilterProvider>
-            {/* AuthGuard a été supprimé d'ici */}
-            {children}
+            <ModalProvider>
+              <NotificationProvider>
+                {/* AuthGuard a été supprimé d'ici */}
+                {children}
+              </NotificationProvider>
+            </ModalProvider>
           </FilterProvider>
         </AuthProvider>
       </body>

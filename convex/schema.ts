@@ -53,6 +53,24 @@ const schema = defineSchema({
   })
     .index("by_room_updated", ["room", "updated"])
     .index("by_user_id", ["userId", "room"]),
+
+  pinnedChats: defineTable({
+    profileId: v.id("profiles"),
+    chatId: v.id("chats"),
+    createdAt: v.number(),
+  })
+    .index("by_profileId", ["profileId"])
+    .index("by_chatId", ["chatId"])
+    .index("by_profileId_and_chatId", ["profileId", "chatId"]),
+
+  archivedChats: defineTable({
+    profileId: v.id("profiles"),
+    chatId: v.id("chats"),
+    createdAt: v.number(),
+  })
+    .index("by_profileId", ["profileId"])
+    .index("by_chatId", ["chatId"])
+    .index("by_profileId_and_chatId", ["profileId", "chatId"]),
 });
 
 // La ligne la plus importante : on exporte le schéma comme exportation par défaut.

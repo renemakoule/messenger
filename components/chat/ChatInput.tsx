@@ -46,7 +46,7 @@ export function ChatInput({
     };
 
     return (
-        <footer className="flex-shrink-0 border-t border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-lg p-3 sm:p-4">
+        <footer className="flex-shrink-0 border-t border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-lg p-3 sm:p-4 md:pb-4 pb-16">
             <div className="relative flex items-end gap-2">
                 {isRecording ? (
                     <div className="flex h-12 cursor-pointer items-center w-full bg-slate-100 dark:bg-slate-800 rounded-lg px-4">

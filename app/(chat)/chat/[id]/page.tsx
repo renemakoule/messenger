@@ -11,6 +11,7 @@ import { Database } from "@/types/supabase";
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { v4 as uuidv4 } from 'uuid';
+import { useNotification } from "@/components/ui/notification-provider";
 
 // Types partagés, essentiels pour la communication entre composants
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
@@ -42,6 +43,7 @@ export default function ChatMessagePage() {
   // Logique pour l'enregistrement vocal
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const { notify } = useNotification();
 
   // Scroll vers le bas à chaque nouveau message
   useEffect(() => {
@@ -132,7 +134,7 @@ export default function ChatMessagePage() {
     }
   };
   
-  const startRecording = async () => {
+  const handleStartRecording = async () => {
     if (isRecording) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -155,9 +157,8 @@ export default function ChatMessagePage() {
         await sendMessage(null, publicUrl, 'audio');
         setSending(false);
       };
-    } catch (err) {
-      console.error("Failed to start recording", err);
-      alert("Could not start recording. Please check microphone permissions.");
+    } catch (e) {
+      notify({ message: "Could not start recording. Please check microphone permissions.", type: "error" });
     }
   };
 
@@ -210,7 +211,7 @@ export default function ChatMessagePage() {
         newMessage={newMessage}
         setNewMessage={setNewMessage}
         onSendMessage={() => sendMessage()}
-        onStartRecording={startRecording}
+        onStartRecording={handleStartRecording}
         onStopRecording={stopRecording}
         isRecording={isRecording}
         isSending={sending}
